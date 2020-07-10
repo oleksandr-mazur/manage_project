@@ -14,17 +14,17 @@
 #
 
 
-PROJECTS_DIR="$HOME/venv2"
-VALID_LANGUAGE="python3.6 python3.8 go"
+PROJECTS_DIR="$HOME/venv"
+VALID_LANGUAGE="python3.6 python3.7 python3.8 go"
 PYTHON_ACTIVATE_FILE="bin/activate"
 
 _workon_complate ()
 {
     local cur=${COMP_WORDS[COMP_CWORD]}
-    COMPREPLY=( $(compgen -W "$(workon2 -l)" -- $cur) )
+    COMPREPLY=( $(compgen -W "$(workon -l)" -- $cur) )
 }
 
-complete -F _workon_complate workon2
+complete -F _workon_complate workon
 
 validate() {
     ### Validate language ###
@@ -71,11 +71,11 @@ _create_prj() {
         mkdir $PRJ_DIR && cd $PRJ_DIR
         ps1 $1
     fi
-    alias workgo="cd $PRJ_DIR"
+    alias gowork="cd $PRJ_DIR"
 }
 
 _compose_up() {
-    if [ -f docker-compose.yml ] && [ $(docker ps -q |wc -l) -eq 0 ]
+    if [ -f docker-compose.yml ] && [ $(docker-compose ps -q |wc -l) -eq 0 ]
     then
         read -p "Do you want run docker-compose ? " -t 30 yn
         if [ $yn == 'y' ] || [ $yn == 'yes' ]
@@ -93,8 +93,21 @@ _compose_up() {
     fi
 }
 
+_compose_down() {
+    if [ -f docker-compose.yml ] && [ $(docker-compose ps -q |wc -l) -ne 0 ]
+    then
+        read -p "Do you want shutdown docker-compose ? " -t 30 yn
+        if [ $yn == 'y' ] || [ $yn == 'yes' ]
+        then
+            docker-compose down
+        fi
+    fi
+}
 
-workon2() {
+
+
+
+workon() {
     ### Manage projects ###
     local OPTIND
     
@@ -141,10 +154,13 @@ workon2() {
         ;;
         *) 
             # deactivate old env
-            if [ -n ${deactivate} ]
+	    # or use #declare -F deactivate > /dev/null
+            if type deactivate > /dev/null 2>&1
             then
                 deactivate
             fi
+
+            _compose_down
 
             if [ -d ${PROJECTS_DIR}/${1}/src ]
             then
@@ -157,7 +173,7 @@ workon2() {
                 exit 2
             fi
             
-            alias workgo="cd $PROJECT_PATH"
+            alias gowork="cd $PROJECT_PATH"
             cd ${PROJECT_PATH}
             
             # check if we use python env
