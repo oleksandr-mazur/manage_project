@@ -13,15 +13,10 @@
 # source ~/bin/venv.sh
 #
 
-set -e
-# set -x
 
 PROJECTS_DIR="$HOME/venv2"
 VALID_LANGUAGE="python3.6 python3.8 go"
-# WORK_HOME=~/venv
-# ACTIVATE_FILE=bin/activate
-# VIRT_ENV=/usr/bin/virtualenv
-VIRTUAL_ENV=/home/alex/venv/devops
+PYTHON_ACTIVATE_FILE="bin/activate"
 
 _workon_complate ()
 {
@@ -55,6 +50,8 @@ ps1() {
     export PS1
 }
 
+
+
 _create_prj() {
     ### Create new project ###
     mkdir -p $PROJECTS_DIR
@@ -65,17 +62,35 @@ _create_prj() {
         return
     fi
 
-    if [ -n $LANGUAGE ] && [[ $LANGUAGE == python* ]]
+    if [[ x$LANGUAGE == xpython* ]]
     then
         ${LANGUAGE} -m venv $PRJ_DIR
         cd $PRJ_DIR
-        source $PRJ_DIR/$ACTIVATE_FILE
+        source $PRJ_DIR/$PYTHON_ACTIVATE_FILE
     else
         mkdir $PRJ_DIR && cd $PRJ_DIR
+        ps1 $1
     fi
-    PROJECT_PATH=$PRJ_DIR
-    export $PROJECT_PATH
-    ps1 $1
+    alias workgo="cd $PRJ_DIR"
+}
+
+_compose_up() {
+    if [ -f docker-compose.yml ] && [ $(docker ps -q |wc -l) -eq 0 ]
+    then
+        read -p "Do you want run docker-compose ? " -t 30 yn
+        if [ $yn == 'y' ] || [ $yn == 'yes' ]
+        then
+            result=$(systemctl is-active docker.service )
+            if [ $result == 'inactive' ]
+            then
+                sudo systemctl start docker.socket && sleep 1
+                sudo systemctl start docker.service && sleep 3
+            fi
+            docker-compose up -d
+            sleep 3
+            docker-compose ps
+        fi
+    fi
 }
 
 
@@ -85,7 +100,7 @@ workon2() {
     
     case $1 in
         ?)
-            printf "Usage: %s: [-a] [-b value] args\n" $(basename $0) >&2
+            printf "Usage: %s: [-c] [-l value] \n" $(basename $0) >&2
             # exit 2
         ;;    
         -c)
@@ -93,7 +108,6 @@ workon2() {
             shift 2
             getopts 'l:' args
             LANGUAGE=$OPTARG
-            echo $args
             if  [ $args == "l" ] && ! validate $LANGUAGE
             then
                 echo "Unsupported language '$OPTARG'"
@@ -102,66 +116,61 @@ workon2() {
             _create_prj $PRJ_NAME
             echo "Created project '$PRJ_NAME'..."
         ;;
-        # -d)
-        #     if [ -d $WORK_HOME/$2 ]
-        #     then
-        #         if [ "w$VIRTUAL_ENV" == "w$WORK_HOME/$2" ]
-        #         then
-        #             deactivate
-        #         fi
-        #         rm -rf $WORK_HOME/$2
-        #     fi
-        # ;;
-#         -h)
-#             echo -e "\nUsage: workon [option] <envname>\n\n-h Show help
-# -c Create env in $WORK_HOME\n-d Delete env\n-l List available env\n-p Create enter point\n"
-#         ;;
+        -d)
+            if [ -d $PROJECTS_DIR/$1 ]
+            then
+                if [ -n deactivate  ]
+                then
+                    deactivate
+                fi
+                rm -rf $PROJECTS_DIR/$1
+            fi
+        ;;
+        -h)
+            echo -e "\nUsage: workon [option] <envname>\n\n-h Show help
+-c Create env in $WORK_HOME\n-d Delete env\n-l List available env\n-p Create enter point\n"
+        ;;
         -l)
-            # find $PROJECTS_DIR -type d|xargs basename -a
             venvs=""
-            for path in $(find $PROJECTS_DIR -type d 2>/dev/null);
+            # for path in $(find $PROJECTS_DIR -type d 2>/dev/null);
+            for path in $(ls $PROJECTS_DIR);
             do
                 venvs+="$(basename ${path}) "
             done
             echo $venvs
         ;;
         *) 
+            # deactivate old env
+            if [ -n ${deactivate} ]
+            then
+                deactivate
+            fi
+
             if [ -d ${PROJECTS_DIR}/${1}/src ]
             then
                 PROJECT_PATH="${PROJECTS_DIR}/${1}/src"
             elif [ -d ${PROJECTS_DIR}/${1} ]
             then
                 PROJECT_PATH="${PROJECTS_DIR}/${1}"
+            else
+                echo -e "Venv $1 not found"
+                exit 2
             fi
             
             alias workgo="cd $PROJECT_PATH"
             cd ${PROJECT_PATH}
-            ps1 ${1}
+            
+            # check if we use python env
+            if [ -f $PROJECTS_DIR/$1/$PYTHON_ACTIVATE_FILE ]
+            then
+                source $PROJECTS_DIR/$1/$PYTHON_ACTIVATE_FILE
+            else
+                ps1 ${1}
+            fi
 
-        #         source $WORK_HOME/$1/$ACTIVATE_FILE
-        #         if [ -f $venv_path/docker-compose.yml ] && [ $(docker ps -q |wc -l) -eq 0 ]
-        #         then
-        #             read -p "Do you want run docker-compose ? " -t 30 yn
-        #             if [ $yn == 'y' ] || [ $yn == 'yes' ]
-        #             then
-        #                 result=$(systemctl is-active docker.service )
-        #                 if [ $result == 'inactive' ]
-        #                 then
-        #                     sudo systemctl start docker.socket && sleep 1
-        #                     sudo systemctl start docker.service && sleep 3
-        #                 fi
-        #                 docker-compose up -d
-        #                 sleep 3
-        #                 docker-compose ps
-        #             fi
-        #         fi
-        #     else
-        #         echo -e "Venv $1 not found"
-        #     fi
+            _compose_up
+
         ;;
     esac
 
 }
-
-
-# workon2 -c www
