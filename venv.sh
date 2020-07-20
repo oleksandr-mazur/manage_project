@@ -105,8 +105,6 @@ _compose_down() {
 }
 
 
-
-
 workon() {
     ### Manage projects ###
     local OPTIND
