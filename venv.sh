@@ -32,19 +32,21 @@ validate() {
     return $?
 }
 
-ps1() {
-    ###  Save origin PS1 ###
-
-    if [ -n "${_OLD_PRJ_PS1:-}" ] ; then
-        PS1="${_OLD_PRJ_PS1:-}"
+ps1_clear() {
+    if [[ -n ${_OLD_PRJ_PS1:-} ]]
+    then
+        PS1=${_OLD_PRJ_PS1:-}
         export PS1
         unset _OLD_PRJ_PS1
     fi
 
-    # if [ -z _OLD_PRJ_PS1 ]
-    # then
-    _OLD_PRJ_PS1="${PS1:-}"
-    # fi
+}
+
+ps1() {
+    ###  Save origin PS1 ###
+    
+    ps1_clear
+    export _OLD_PRJ_PS1=${PS1:-}
 
     PS1="($1) ${PS1:-}"
     export PS1
@@ -128,7 +130,7 @@ workon() {
             echo "Created project '$PRJ_NAME'..."
         ;;
         -e)
-            if [ -n deactivate  ]
+            if [[ -n $deactivate  ]]
             then
                 deactivate
             else
@@ -143,7 +145,7 @@ workon() {
         -d)
             if [ -d $PROJECTS_DIR/$1 ]
             then
-                if [ -n deactivate  ]
+                if [[ -n $deactivate  ]]
                 then
                     deactivate
                 fi
@@ -190,6 +192,7 @@ workon() {
             # check if we use python env
             if [ -f $PROJECTS_DIR/$1/$PYTHON_ACTIVATE_FILE ]
             then
+		ps1_clear
                 source $PROJECTS_DIR/$1/$PYTHON_ACTIVATE_FILE
             else
                 ps1 ${1}
