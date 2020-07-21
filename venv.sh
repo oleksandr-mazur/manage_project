@@ -32,7 +32,17 @@ validate() {
     return $?
 }
 
-ps1_clear() {
+_is_python_env() {
+    if [ -n "${VIRTUAL_ENV}" ]
+    then
+        return 0
+    else
+        return 1
+    fi
+}
+
+_ps1_set_default() {
+    ### Set default ps1 ###
     if [[ -n ${_OLD_PRJ_PS1:-} ]]
     then
         PS1=${_OLD_PRJ_PS1:-}
@@ -42,16 +52,29 @@ ps1_clear() {
 
 }
 
-ps1() {
+_ps1_switch() {
     ###  Save origin PS1 ###
-    
-    ps1_clear
+    _ps1_set_default
     export _OLD_PRJ_PS1=${PS1:-}
 
     PS1="($1) ${PS1:-}"
     export PS1
 }
 
+_deactivate() {
+    if _is_python_env
+    then 
+        _ps1_set_default
+        deactivate
+    else
+        if [ -n "${_OLD_PRJ_PS1:-}" ]
+        then
+            PS1="${_OLD_PRJ_PS1:-}"
+            export PS1
+            unset _OLD_PRJ_PS1
+        fi
+    fi
+}
 
 
 _create_prj() {
@@ -61,7 +84,7 @@ _create_prj() {
     if [ -d $PRJ_DIR ]
     then
         echo "Project $1 already exists"
-        return
+        return 1
     fi
 
     if [[ x$LANGUAGE == xpython* ]]
@@ -71,7 +94,7 @@ _create_prj() {
         source $PRJ_DIR/$PYTHON_ACTIVATE_FILE
     else
         mkdir $PRJ_DIR && cd $PRJ_DIR
-        ps1 $1
+        _ps1_switch $1
     fi
     alias gowork="cd $PRJ_DIR"
 }
@@ -96,6 +119,12 @@ _compose_up() {
 }
 
 _compose_down() {
+    if [ "${1}" == "$(pwd)" ]
+    then
+        # skip down compose for the same project
+        return
+    fi
+
     if [ -f docker-compose.yml ] && [ $(docker-compose ps -q |wc -l) -ne 0 ]
     then
         read -p "Do you want shutdown docker-compose ? " -t 30 yn
@@ -114,7 +143,7 @@ workon() {
     case $1 in
         ?)
             printf "Usage: %s: [-c] [-l value] \n" $(basename $0) >&2
-            # exit 2
+            return 2
         ;;    
         -c)
             PRJ_NAME=$2
@@ -124,41 +153,28 @@ workon() {
             if  [ $args == "l" ] && ! validate $LANGUAGE
             then
                 echo "Unsupported language '$OPTARG'"
-                return
+                return 1
             fi
             _create_prj $PRJ_NAME
             echo "Created project '$PRJ_NAME'..."
         ;;
         -e)
-            if [[ -n $deactivate  ]]
-            then
-                deactivate
-            else
-                if [ -n "${_OLD_PRJ_PS1:-}" ]
-                then
-                    PS1="${_OLD_PRJ_PS1:-}"
-                    export PS1
-                    unset _OLD_PRJ_PS1
-                fi
-            fi
+            _deactivate
+            cd $HOME
         ;;
         -d)
             if [ -d $PROJECTS_DIR/$1 ]
             then
-                if [[ -n $deactivate  ]]
-                then
-                    deactivate
-                fi
+                _deactivate
                 rm -rf $PROJECTS_DIR/$1
             fi
         ;;
         -h)
             echo -e "\nUsage: workon [option] <envname>\n\n-h Show help
--c Create env in $WORK_HOME\n-d Delete env\n-l List available env\n-p Create enter point\n"
+-c Create prj in $WORK_HOME\n-d Delete prj\n-l List available prj\n-e Exit from prj\n"
         ;;
         -l)
             venvs=""
-            # for path in $(find $PROJECTS_DIR -type d 2>/dev/null);
             for path in $(ls $PROJECTS_DIR);
             do
                 venvs+="$(basename ${path}) "
@@ -166,14 +182,7 @@ workon() {
             echo $venvs
         ;;
         *) 
-            # deactivate old env
-	    # or use #declare -F deactivate > /dev/null
-            if type deactivate > /dev/null 2>&1
-            then
-                deactivate
-            fi
-
-            _compose_down
+            _deactivate
 
             if [ -d ${PROJECTS_DIR}/${1}/src ]
             then
@@ -182,9 +191,10 @@ workon() {
             then
                 PROJECT_PATH="${PROJECTS_DIR}/${1}"
             else
-                echo -e "Venv $1 not found"
-                exit 2
+                echo -e "Project $1 not found"
+                return 2
             fi
+            _compose_down $PROJECT_PATH
             
             alias gowork="cd $PROJECT_PATH"
             cd ${PROJECT_PATH}
@@ -192,10 +202,10 @@ workon() {
             # check if we use python env
             if [ -f $PROJECTS_DIR/$1/$PYTHON_ACTIVATE_FILE ]
             then
-		ps1_clear
+		        _ps1_set_default
                 source $PROJECTS_DIR/$1/$PYTHON_ACTIVATE_FILE
             else
-                ps1 ${1}
+                _ps1_switch ${1}
             fi
 
             _compose_up
