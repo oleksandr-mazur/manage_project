@@ -84,18 +84,35 @@ _create_prj() {
     if [ -d $PRJ_DIR ]
     then
         echo "Project $1 already exists"
+        unset USE_LANGUAGE
+        unset SOURCE_GIT
         return 1
     fi
 
-    if [[ x$LANGUAGE == xpython* ]]
+    if [[ x${USE_LANGUAGE} == xpython* ]]
     then
-        ${LANGUAGE} -m venv $PRJ_DIR
+        echo "Creating venv for ${USE_LANGUAGE}}"
+        ${USE_LANGUAGE} -m venv $PRJ_DIR
         cd $PRJ_DIR
+        if [ -n "${SOURCE_GIT}" ]
+        then
+            echo "Clonning ${SOURCE_GIT}" 
+            git clone ${SOURCE_GIT} src && cd src
+        fi
         source $PRJ_DIR/$PYTHON_ACTIVATE_FILE
+    elif [ -n "${SOURCE_GIT}" ]
+    then
+        echo "Clonning source from ${SOURCE_GIT}"
+        git clone ${SOURCE_GIT} $PRJ_DIR
+        cd $PRJ_DIR
+        _ps1_switch $1
     else
         mkdir $PRJ_DIR && cd $PRJ_DIR
         _ps1_switch $1
     fi
+    unset USE_LANGUAGE
+    unset SOURCE_GIT
+
     alias gowork="cd $PRJ_DIR"
 }
 
@@ -148,14 +165,28 @@ workon() {
         -c)
             PRJ_NAME=$2
             shift 2
-            getopts 'l:' args
-            LANGUAGE=$OPTARG
-            if  [ $args == "l" ] && ! validate $LANGUAGE
-            then
-                echo "Unsupported language '$OPTARG'"
-                return 1
-            fi
-            _create_prj $PRJ_NAME
+            while getopts "l:s:h" arg; do
+                case $arg in
+                    l)
+                        USE_LANGUAGE=$OPTARG
+                        if  ! validate $USE_LANGUAGE
+                        then
+                            echo "Unsupported language '$OPTARG'"
+                            return 1
+                        fi
+                    ;;
+                    s)
+                        SOURCE_GIT=$OPTARG
+                    ;;
+                    h)
+                        echo -e "-l set language\n-s set source to clone"
+                        return 0
+                    ;;
+                esac
+            done
+
+            _create_prj $PRJ_NAME 
+
             echo "Created project '$PRJ_NAME'..."
         ;;
         -e)
@@ -163,10 +194,11 @@ workon() {
             cd $HOME
         ;;
         -d)
-            if [ -d $PROJECTS_DIR/$1 ]
+            if [ -d $PROJECTS_DIR/$2 ]
             then
                 _deactivate
-                rm -rf $PROJECTS_DIR/$1
+                rm -rf $PROJECTS_DIR/$2
+                cd $HOME
             fi
         ;;
         -h)
