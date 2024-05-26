@@ -13,12 +13,153 @@
 # source ~/bin/venv.sh
 #
 
+# .workon
+# LANGUAGE=go
 
-PROJECTS_DIR="$HOME/venv"
-VALID_LANGUAGE="python3.6 python3.7 python3.8 go"
+VENV_LANGUAGE="unknown"
+VENV_PROJECT_NAME=""
+VENV_WORKING_DIR=""
+VENV_PROJECTS_PATH="$HOME/venv"
+VENV_VALID_LANGUAGE="python3 go"
 PYTHON_ACTIVATE_FILE="bin/activate"
+VENV_SOURCE_FILE_NAME=".workon"
+VENV_DEFAULT_GOPATH="$HOME/.go"
 
-_workon_complate ()
+
+function _DefineLanguage {
+    # args:
+    #   path: path to work directory
+    local path=${1}
+    test -f ${path}/.workon || return 128
+    export VENV_LANGUAGE=$(cat ${path}/.workon | grep LANGUAGE|cut -f2 -d =)
+    
+    return $?
+    # echo $(cat ${path}/.workon | grep LANGUAGE|cut -f2 -d =)
+}
+
+
+function _FindWorkProjectDir {
+    # args:
+    #   prj_name: project name
+    local prj_name=${1}
+    if [[ -z ${prj_name} ]]; then
+        echo "Invalid project name ${prj_name}"
+        return 2
+    fi
+    local project_path=${VENV_PROJECTS_PATH}/${prj_name}
+    for x in ${project_path}/src ${project_path}; do
+        if [[ -d ${x} ]]; then
+            VENV_WORKING_DIR=${x}
+            return 0
+        fi
+    done
+    return 2
+}
+
+#  Validate language
+function _Validate {
+    local language=$(printf $1|cut -f 1 -d .)
+    echo ${VENV_VALID_LANGUAGE} | grep -F -q -w "$language";
+    return $?
+}
+
+#  Deactivate python environment
+function _Deactivate {
+    if [[ -z ${VENV_PROJECT_NAME} ]]; then
+        return 0
+    fi
+
+    case ${VENV_LANGUAGE} in
+    python|PYTHON)
+        _PS1SetDefault
+        deactivate
+        ;;
+    go|golang|GO|GOLANG)
+        export GOPATH=${VENV_DEFAULT_GOPATH}
+        _PS1SetDefault
+        ;;
+    *)
+        _PS1SetDefault
+        ;;
+    esac
+    unset VENV_LANGUAGE VENV_PROJECT_PATH VENV_WORKING_DIR VENV_PROJECT_NAME
+}
+
+#  Set default PS1
+function _PS1SetDefault() {
+    if [[ -n ${_OLD_PRJ_PS1:-} ]]
+    then
+        PS1=${_OLD_PRJ_PS1:-}
+        export PS1
+        unset _OLD_PRJ_PS1
+    fi
+}
+
+#  Save origin PS1
+function _PS1Switch() {
+    _PS1SetDefault
+    export _OLD_PRJ_PS1=${PS1:-}
+
+    # PS1="($1) ${PS1:-}"
+    PS1="\033[37;1;41m($1)\033[0m ${PS1:-}" 
+    export PS1
+}
+
+function CloneGit {
+    local gitsource=${1}
+    if [[ -n "${gitsource}" ]]; then
+        echo "Clonning ${gitsource}"
+        git clone ${gitsource} src && cd src
+    fi
+}
+
+
+function _ActivateVENV () {
+    # args:
+    #   prj_name: project name
+    _Deactivate
+
+    VENV_PROJECT_NAME=${1}
+
+    if ! _FindWorkProjectDir ${VENV_PROJECT_NAME}; then
+        echo "Project ${1} not found"
+        return 1
+    fi
+
+    if ! _DefineLanguage ${VENV_PROJECTS_PATH}/${1}; then
+        echo "File ${VENV_PROJECTS_PATH}/${1}/${VENV_SOURCE_FILE_NAME} must be exist"
+        return 1
+    fi
+    _compose_down $VENV_WORKING_DIR
+
+    alias gowork="cd $VENV_WORKING_DIR"
+    cd ${VENV_WORKING_DIR}
+
+    case $VENV_LANGUAGE in
+
+    python|PYTHON)
+        echo -e "Activate ${1} [Python]\n"
+        source $VENV_PROJECTS_PATH/$1/$PYTHON_ACTIVATE_FILE
+        PS1=$(echo $PS1 | cut -f 2-100 -d " ")
+        export PS1
+        _PS1Switch ${1}
+        ;;
+
+    go|golang|GO|GOLANG)
+        echo -e "Activate ${1} [Golang]\n"
+        export GOPATH=${VENV_WORKING_DIR}
+        _PS1Switch ${1}
+        ;;
+    *)
+        echo -e "Activate ${1}\n"
+        _PS1Switch ${1}
+        ;;
+    esac
+    _compose_up
+}
+
+
+function _workon_complate ()
 {
     local cur=${COMP_WORDS[COMP_CWORD]}
     COMPREPLY=( $(compgen -W "$(workon -l)" -- $cur) )
@@ -26,98 +167,62 @@ _workon_complate ()
 
 complete -F _workon_complate workon
 
-validate() {
-    ### Validate language ###
-    echo ${VALID_LANGUAGE} | grep -F -q -w "$1";
-    return $?
-}
 
-_is_python_env() {
-    if [ -n "${VIRTUAL_ENV}" ]
+#  Create new project
+function _CreateProject {
+    local PRJ_DIR=$VENV_PROJECTS_PATH/$1
+    if [[ -d $PRJ_DIR ]]
     then
-        return 0
-    else
+        echo "Project \"$1\" already exists"
+        unset USE_LANGUAGE SOURCE_GIT
         return 1
     fi
-}
+    mkdir -p $PRJ_DIR
 
-_ps1_set_default() {
-    ### Set default ps1 ###
-    if [[ -n ${_OLD_PRJ_PS1:-} ]]
-    then
-        PS1=${_OLD_PRJ_PS1:-}
-        export PS1
-        unset _OLD_PRJ_PS1
-    fi
-
-}
-
-_ps1_switch() {
-    ###  Save origin PS1 ###
-    _ps1_set_default
-    export _OLD_PRJ_PS1=${PS1:-}
-
-    PS1="($1) ${PS1:-}"
-    export PS1
-}
-
-_deactivate() {
-    if _is_python_env
-    then 
-        _ps1_set_default
-        deactivate
-    else
-        if [ -n "${_OLD_PRJ_PS1:-}" ]
-        then
-            PS1="${_OLD_PRJ_PS1:-}"
-            export PS1
-            unset _OLD_PRJ_PS1
-        fi
-    fi
-}
-
-
-_create_prj() {
-    ### Create new project ###
-    mkdir -p $PROJECTS_DIR
-    PRJ_DIR=$PROJECTS_DIR/$1
-    if [ -d $PRJ_DIR ]
-    then
-        echo "Project $1 already exists"
-        unset USE_LANGUAGE
-        unset SOURCE_GIT
-        return 1
-    fi
-
-    if [[ x${USE_LANGUAGE} == xpython* ]]
-    then
-        echo "Creating venv for ${USE_LANGUAGE}}"
+    if [[ ${USE_LANGUAGE} == python* ]]; then
+        echo "Creating venv for ${USE_LANGUAGE}"
         ${USE_LANGUAGE} -m venv $PRJ_DIR
         cd $PRJ_DIR
-        if [ -n "${SOURCE_GIT}" ]
-        then
-            echo "Clonning ${SOURCE_GIT}" 
-            git clone ${SOURCE_GIT} src && cd src
-        fi
+        CloneGit ${SOURCE_GIT}
+        # if [ -n "${SOURCE_GIT}" ]
+        # then
+        #     echo "Clonning ${SOURCE_GIT}" 
+        #     git clone ${SOURCE_GIT} src && cd src
+        # fi
         source $PRJ_DIR/$PYTHON_ACTIVATE_FILE
-    elif [ -n "${SOURCE_GIT}" ]
-    then
-        echo "Clonning source from ${SOURCE_GIT}"
-        git clone ${SOURCE_GIT} $PRJ_DIR
-        cd $PRJ_DIR
-        _ps1_switch $1
-    else
-        mkdir $PRJ_DIR && cd $PRJ_DIR
-        _ps1_switch $1
-    fi
-    unset USE_LANGUAGE
-    unset SOURCE_GIT
+        echo "LANGUAGE=python" > ${PRJ_DIR}/${VENV_SOURCE_FILE_NAME}
+    elif [[ ${USE_LANGUAGE} == go* ]]; then
+        echo "LANGUAGE=golang" > ${PRJ_DIR}/${VENV_SOURCE_FILE_NAME}
+        echo "Creating venv for ${USE_LANGUAGE}"
+        mkdir $PRJ_DIR/src && cd $PRJ_DIR
 
-    alias gowork="cd $PRJ_DIR"
+        CloneGit ${SOURCE_GIT}
+
+        # if [[ -n "${SOURCE_GIT}" ]]; then
+        #     echo "Clonning ${SOURCE_GIT}"
+        #     git clone ${SOURCE_GIT} src && cd src
+        # fi
+    elif [[ -n "${SOURCE_GIT}" ]]; then
+        cd $PRJ_DIR
+        touch ${PRJ_DIR}/${VENV_SOURCE_FILE_NAME}
+        CloneGit ${SOURCE_GIT}
+        # echo "Clonning source from ${SOURCE_GIT}"
+        # git clone ${SOURCE_GIT} $PRJ_DIR
+        
+        
+    else
+        cd $PRJ_DIR
+        touch ${PRJ_DIR}/${VENV_SOURCE_FILE_NAME}
+    fi
+    unset USE_LANGUAGE SOURCE_GIT
+
+    echo "Created project '$PRJ_NAME'..."
+    _ActivateVENV ${1}
 }
 
-_compose_up() {
-    if [ -f docker-compose.yml ] && [ $(docker-compose ps -q |wc -l) -eq 0 ]
+#  Up docker-compose
+function _compose_up() {
+    if [ -f docker-compose.yaml ] && [ $(docker compose ps -q |wc -l) -eq 0 ]
     then
         read -p "Do you want run docker-compose ? " -t 30 yn
         if [ $yn == 'y' ] || [ $yn == 'yes' ]
@@ -128,32 +233,33 @@ _compose_up() {
                 sudo systemctl start docker.socket && sleep 1
                 sudo systemctl start docker.service && sleep 3
             fi
-            docker-compose up -d
+            docker compose up -d
             sleep 3
-            docker-compose ps
+            docker compose ps
         fi
     fi
 }
 
-_compose_down() {
+#  Down docker-compose
+function _compose_down() {
     if [ "${1}" == "$(pwd)" ]
     then
         # skip down compose for the same project
         return
     fi
 
-    if [ -f docker-compose.yml ] && [ $(docker-compose ps -q |wc -l) -ne 0 ]
+    if [ -f docker-compose.yml ] && [ $(docker compose ps -q |wc -l) -ne 0 ]
     then
         read -p "Do you want shutdown docker-compose ? " -t 30 yn
         if [ $yn == 'y' ] || [ $yn == 'yes' ]
         then
-            docker-compose down
+            docker compose down
         fi
     fi
 }
 
 
-workon() {
+function workon() {
     ### Manage projects ###
     local OPTIND
     
@@ -163,13 +269,13 @@ workon() {
             return 2
         ;;    
         -c)
-            PRJ_NAME=$2
+            local PRJ_NAME=$2
             shift 2
             while getopts "l:s:h" arg; do
                 case $arg in
                     l)
                         USE_LANGUAGE=$OPTARG
-                        if  ! validate $USE_LANGUAGE
+                        if  ! _Validate $USE_LANGUAGE
                         then
                             echo "Unsupported language '$OPTARG'"
                             return 1
@@ -185,20 +291,19 @@ workon() {
                 esac
             done
 
-            _create_prj $PRJ_NAME 
+            _CreateProject $PRJ_NAME 
 
-            echo "Created project '$PRJ_NAME'..."
         ;;
         -e)
-            _deactivate
+            _Deactivate
             cd $HOME
         ;;
         -d)
-            if [ -d $PROJECTS_DIR/$2 ]
+            if [[ -d ${VENV_PROJECTS_PATH}/${2} ]]
             then
-                _deactivate
-                rm -rf $PROJECTS_DIR/$2
-                cd $HOME
+                _Deactivate
+                rm -rf ${VENV_PROJECTS_PATH}/${2}
+                cd ${VENV_PROJECTS_PATH}
             fi
         ;;
         -h)
@@ -206,42 +311,15 @@ workon() {
 -c Create prj in $WORK_HOME\n-d Delete prj\n-l List available prj\n-e Exit from prj\n"
         ;;
         -l)
-            venvs=""
-            for path in $(ls $PROJECTS_DIR);
+            local venvs=""
+            for path in $(ls ${VENV_PROJECTS_PATH});
             do
                 venvs+="$(basename ${path}) "
             done
             echo $venvs
         ;;
         *) 
-            _deactivate
-
-            if [ -d ${PROJECTS_DIR}/${1}/src ]
-            then
-                PROJECT_PATH="${PROJECTS_DIR}/${1}/src"
-            elif [ -d ${PROJECTS_DIR}/${1} ]
-            then
-                PROJECT_PATH="${PROJECTS_DIR}/${1}"
-            else
-                echo -e "Project $1 not found"
-                return 2
-            fi
-            _compose_down $PROJECT_PATH
-            
-            alias gowork="cd $PROJECT_PATH"
-            cd ${PROJECT_PATH}
-            
-            # check if we use python env
-            if [ -f $PROJECTS_DIR/$1/$PYTHON_ACTIVATE_FILE ]
-            then
-		        _ps1_set_default
-                source $PROJECTS_DIR/$1/$PYTHON_ACTIVATE_FILE
-            else
-                _ps1_switch ${1}
-            fi
-
-            _compose_up
-
+            _ActivateVENV ${1}
         ;;
     esac
 
