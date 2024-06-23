@@ -138,7 +138,7 @@ function _ActivateVENV () {
     case $VENV_LANGUAGE in
 
     python|PYTHON)
-        echo -e "Activate ${1} [Python]\n"
+        echo -e "Activate ${1} [Python]"
         source $VENV_PROJECTS_PATH/$1/$PYTHON_ACTIVATE_FILE
         PS1=$(echo $PS1 | cut -f 2-100 -d " ")
         export PS1
@@ -146,12 +146,12 @@ function _ActivateVENV () {
         ;;
 
     go|golang|GO|GOLANG)
-        echo -e "Activate ${1} [Golang]\n"
+        echo -e "Activate ${1} [Golang]"
         export GOPATH=${VENV_WORKING_DIR}
         _PS1Switch ${1}
         ;;
     *)
-        echo -e "Activate ${1}\n"
+        echo -e "Activate ${1}"
         _PS1Switch ${1}
         ;;
     esac
