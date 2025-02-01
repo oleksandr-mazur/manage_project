@@ -26,6 +26,16 @@ VENV_SOURCE_FILE_NAME=".workon"
 VENV_DEFAULT_GOPATH="$HOME/.go"
 
 
+prompt_color='\[\033[;32m\]'
+info_color='\[\033[1;34m\]'
+venv_color='\033[37;1;41m'
+white_color='\[\033[38;5;15m\]'
+prompt_symbol=㉿
+
+#PS1=$prompt_color'┌──${debian_chroot:+($debian_chroot)──}${VIRTUAL_ENV:+(\033[37;1;41m\]$(basename $VIRTUAL_ENV)'$prompt_color')}('$info_color'\u'$prompt_symbol'\h'$prompt_color')-[\[\033[0;1m\]\w'$prompt_color']\n'$prompt_color'└─'$white_color'$(git-branch-prompt)$(kube_ps1)\$\[\033[0m\] '
+
+PS1=$prompt_color'┌${debian_chroot:+($debian_chroot)──}${VIRTUAL_ENV:+(\033[37;1;41m\]$(basename $VIRTUAL_ENV)'$prompt_color')}('$info_color'\u'$prompt_symbol'\h'$prompt_color')-[\[\033[0;1m\]\w'$prompt_color']\n'$prompt_color'└'$white_color'$(git-branch-prompt)$(kube_ps1)\$\[\033[0m\] '
+
 function _DefineLanguage {
     # args:
     #   path: path to work directory
@@ -65,14 +75,14 @@ function _Validate {
 
 #  Deactivate python environment
 function _Deactivate {
-    if [[ -z ${VENV_PROJECT_NAME} ]]; then
+    if [[ -z ${VIRTUAL_ENV} ]]; then
         return 0
     fi
 
     case ${VENV_LANGUAGE} in
     python|PYTHON)
-        _PS1SetDefault
         deactivate
+        _PS1SetDefault
         ;;
     go|golang|GO|GOLANG)
         export GOPATH=${VENV_DEFAULT_GOPATH}
@@ -87,6 +97,8 @@ function _Deactivate {
 
 #  Set default PS1
 function _PS1SetDefault() {
+    unset VIRTUAL_ENV
+    return 
     if [[ -n ${_OLD_PRJ_PS1:-} ]]
     then
         PS1=${_OLD_PRJ_PS1:-}
@@ -98,11 +110,13 @@ function _PS1SetDefault() {
 #  Save origin PS1
 function _PS1Switch() {
     _PS1SetDefault
-    export _OLD_PRJ_PS1=${PS1:-}
+    # export _OLD_PRJ_PS1=${PS1:-}
 
     # PS1="($1) ${PS1:-}"
-    PS1="\033[37;1;41m($1)\033[0m ${PS1:-}" 
-    export PS1
+    # PS1="\033[37;1;41m($1)\033[0m ${PS1:-}" 
+    # export PS1
+    export VIRTUAL_ENV=${VENV_PROJECTS_PATH}/${1}
+
 }
 
 function CloneGit {
@@ -140,9 +154,9 @@ function _ActivateVENV () {
     python|PYTHON)
         echo -e "Activate ${1} [Python]"
         source $VENV_PROJECTS_PATH/$1/$PYTHON_ACTIVATE_FILE
-        PS1=$(echo $PS1 | cut -f 2-100 -d " ")
-        export PS1
-        _PS1Switch ${1}
+        PS1="$(echo $PS1 | cut -f 2-100 -d " ") "
+        # export PS1
+        # _PS1Switch ${1}
         ;;
 
     go|golang|GO|GOLANG)
@@ -299,6 +313,12 @@ function workon() {
             cd $HOME
         ;;
         -d)
+	        if [[ -z ${2} ]]
+            then
+                echo -e "Usage: workon -d <venv_name>\n"
+                return
+            fi
+
             if [[ -d ${VENV_PROJECTS_PATH}/${2} ]]
             then
                 _Deactivate
