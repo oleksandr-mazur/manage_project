@@ -25,16 +25,20 @@ PYTHON_ACTIVATE_FILE="bin/activate"
 VENV_SOURCE_FILE_NAME=".workon"
 VENV_DEFAULT_GOPATH="$HOME/.go"
 
-
 prompt_color='\[\033[;32m\]'
 info_color='\[\033[1;34m\]'
 venv_color='\033[37;1;41m'
 white_color='\[\033[38;5;15m\]'
+yellow_color='\[\033[38;5;11m\]'
 prompt_symbol=㉿
+
+
+source ./aws_switch.sh
+source ./git_show.sh
 
 #PS1=$prompt_color'┌──${debian_chroot:+($debian_chroot)──}${VIRTUAL_ENV:+(\033[37;1;41m\]$(basename $VIRTUAL_ENV)'$prompt_color')}('$info_color'\u'$prompt_symbol'\h'$prompt_color')-[\[\033[0;1m\]\w'$prompt_color']\n'$prompt_color'└─'$white_color'$(git-branch-prompt)$(kube_ps1)\$\[\033[0m\] '
 
-PS1=$prompt_color'┌${debian_chroot:+($debian_chroot)──}${VIRTUAL_ENV:+(\033[37;1;41m\]$(basename $VIRTUAL_ENV)'$prompt_color')}('$info_color'\u'$prompt_symbol'\h'$prompt_color')-[\[\033[0;1m\]\w'$prompt_color']\n'$prompt_color'└'$white_color'$(git-branch-prompt)$(kube_ps1)\$\[\033[0m\] '
+PS1=$prompt_color'┌${debian_chroot:+($debian_chroot)──}${VIRTUAL_ENV:+(\033[37;1;41m\]$(basename $VIRTUAL_ENV)'$prompt_color')}('$info_color'\u'$prompt_symbol'\h'$prompt_color')-[\[\033[0;1m\]\w'$prompt_color']\n'$prompt_color'└'$white_color'$(git-branch-prompt)$(get_aws_profile)$(kube_ps1)\$\[\033[0m\] '
 
 function _DefineLanguage {
     # args:
@@ -205,6 +209,7 @@ function _CreateProject {
         # fi
         source $PRJ_DIR/$PYTHON_ACTIVATE_FILE
         echo "LANGUAGE=python" > ${PRJ_DIR}/${VENV_SOURCE_FILE_NAME}
+        mkdir $PRJ_DIR/src && cd $PRJ_DIR
     elif [[ ${USE_LANGUAGE} == go* ]]; then
         echo "LANGUAGE=golang" > ${PRJ_DIR}/${VENV_SOURCE_FILE_NAME}
         echo "Creating venv for ${USE_LANGUAGE}"
